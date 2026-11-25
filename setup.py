@@ -8,14 +8,14 @@ with open(path.join(this_directory, "README.md"), encoding="utf-8") as f:
 
 setup(
     name="cbpi4-bpl-fermentero",
-    version="0.2.0",
+    version="0.3.0",
     description="CraftBeerPi 4 — integração Fermentero BrewPiLess (MAZZA)",
     author="MAZZA Brew Systems",
     url="https://github.com/gumazza/cbpi4-bpl-fermentero",
     include_package_data=True,
     package_data={
         "": ["*.yaml"],
-        "cbpi4-bpl-fermentero": ["*.yaml"],
+        "cbpi4-bpl-fermentero": ["*.yaml", "static/*"],
     },
     packages=["cbpi4-bpl-fermentero"],
     long_description=long_description,

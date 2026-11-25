@@ -19,10 +19,19 @@ logger = logging.getLogger(__name__)
 _telemetry_by_device: dict = {}
 
 
+def _merge_telemetry(device_id: str) -> dict:
+    tel = dict(_telemetry_by_device.get(device_id, {}))
+    mqtt_tel = mqtt_bridge.snapshot_telemetry(device_id)
+    if mqtt_tel:
+        tel.update(mqtt_tel)
+    return tel
+
+
 class BPLApiExtension(CBPiExtension):
     def __init__(self, cbpi):
         self.cbpi = cbpi
         device_registry.init_from_cbpi(cbpi)
+        mqtt_bridge.register_all_from_registry(device_registry.list_devices())
         self.cbpi.register(self, "/api/bpl/v1")
 
     def _device_or_404(self, device_id: str):
@@ -42,7 +51,34 @@ class BPLApiExtension(CBPiExtension):
           "200":
             description: Lista de dispositivos (id padrão Fermentero)
         """
-        return web.json_response({"devices": device_registry.list_devices()})
+        devices = device_registry.list_devices()
+        enriched = []
+        for d in devices:
+            did = d.get("id")
+            enriched.append(
+                {
+                    **d,
+                    "telemetry": _merge_telemetry(did) if did else {},
+                    "topics": {
+                        "telemetry": f"{d.get('topicPrefix', 'cbpi/bpl')}/{did}/telemetry",
+                        "command": f"{d.get('topicPrefix', 'cbpi/bpl')}/{did}/command",
+                    },
+                }
+            )
+        return web.json_response({"devices": enriched})
+
+    @request_mapping(path="/devices", method="POST", auth_required=False)
+    async def create_device(self, request):
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid json"}, status=400)
+        try:
+            dev = device_registry.upsert_device(self.cbpi, body)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        mqtt_bridge.register_all_from_registry(device_registry.list_devices())
+        return web.json_response({"device": dev}, status=201)
 
     @request_mapping(path="/devices/{deviceId}", method="GET", auth_required=False)
     async def get_device(self, request):
@@ -50,7 +86,7 @@ class BPLApiExtension(CBPiExtension):
         dev = self._device_or_404(device_id)
         if dev is None:
             return web.json_response({"error": "device not found"}, status=404)
-        tel = _telemetry_by_device.get(device_id, {})
+        tel = _merge_telemetry(device_id)
         return web.json_response({"device": dev, "telemetry": tel})
 
     @request_mapping(path="/devices/{deviceId}", method="PUT", auth_required=False)
@@ -59,26 +95,43 @@ class BPLApiExtension(CBPiExtension):
         Atualiza nome, broker, prefixo MQTT, etc. O `id` (ex. Fermentero_2) pode ser alterado pelo usuário.
         """
         device_id = request.match_info["deviceId"]
+        if self._device_or_404(device_id) is None:
+            return web.json_response({"error": "device not found"}, status=404)
         try:
             body = await request.json()
         except Exception:
             return web.json_response({"error": "invalid json"}, status=400)
-        body["id"] = body.get("id", device_id)
-        if body["id"] != device_id and not device_registry.get_device(device_id):
-            return web.json_response({"error": "device not found"}, status=404)
-        # renomear id: remove antigo se mudou
-        if body["id"] != device_id:
-            new_dev = device_registry.upsert_device(self.cbpi, body)
-            return web.json_response({"device": new_dev})
-        dev = device_registry.upsert_device(self.cbpi, {**body, "id": device_id})
+        try:
+            dev = device_registry.upsert_device(
+                self.cbpi, body, previous_id=device_id
+            )
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        new_id = dev.get("id", device_id)
+        if new_id != device_id and device_id in _telemetry_by_device:
+            _telemetry_by_device[new_id] = _telemetry_by_device.pop(device_id)
+        mqtt_bridge.register_all_from_registry(device_registry.list_devices())
         return web.json_response({"device": dev})
+
+    @request_mapping(path="/devices/{deviceId}", method="DELETE", auth_required=False)
+    async def delete_device(self, request):
+        device_id = request.match_info["deviceId"]
+        if self._device_or_404(device_id) is None:
+            return web.json_response({"error": "device not found"}, status=404)
+        try:
+            device_registry.remove_device(self.cbpi, device_id)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        _telemetry_by_device.pop(device_id, None)
+        mqtt_bridge.register_all_from_registry(device_registry.list_devices())
+        return web.json_response(status=204)
 
     @request_mapping(path="/devices/{deviceId}/telemetry", method="GET", auth_required=False)
     async def get_telemetry(self, request):
         device_id = request.match_info["deviceId"]
         if self._device_or_404(device_id) is None:
             return web.json_response({"error": "device not found"}, status=404)
-        return web.json_response(_telemetry_by_device.get(device_id, {}))
+        return web.json_response(_merge_telemetry(device_id))
 
     @request_mapping(path="/devices/{deviceId}/command", method="POST", auth_required=False)
     async def post_command(self, request):
@@ -107,6 +160,7 @@ class BPLApiExtension(CBPiExtension):
             pressure_psi=body.get("pressurePsi"),
             humidity_rh=body.get("humidityRh"),
             engage=body.get("engage"),
+            device_id=device_id,
         )
         return web.json_response({"ok": True, "deviceId": device_id})
 
@@ -127,9 +181,9 @@ class BPLApiExtension(CBPiExtension):
             device_registry.upsert_device(
                 self.cbpi, {"id": device_id, "name": device_id}
             )
+            mqtt_bridge.register_all_from_registry(device_registry.list_devices())
         data["ts"] = data.get("ts", int(time.time()))
         _telemetry_by_device[device_id] = data
-        # partilha com bridge MQTT (leituras de sensores plugin)
         mqtt_bridge.update_telemetry(data)
         return web.json_response(status=204)
 
@@ -138,6 +192,11 @@ class BPLApiExtension(CBPiExtension):
         return web.json_response(
             {
                 "service": "cbpi4-bpl-fermentero",
+                "version": "0.3.0",
                 "defaultDeviceId": device_registry.DEFAULT_DEVICE_ID,
+                "ui": [
+                    "/cbpi_bpl_fermentero/static/index.html",
+                    "/cbpi_bplfermentero/static/index.html",
+                ],
             }
         )

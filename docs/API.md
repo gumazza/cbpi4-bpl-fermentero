@@ -14,9 +14,11 @@ Documentação Swagger do CBPi: `http://<CBPi>:8000/api/doc` (rotas aparecem ap�
 | Método | Caminho | Descrição |
 |--------|---------|-----------|
 | GET | `/health` | Status do plugin |
-| GET | `/devices` | Lista equipamentos BPL |
+| GET | `/devices` | Lista equipamentos BPL (+ telemetria e tópicos) |
+| POST | `/devices` | Cadastra novo equipamento |
 | GET | `/devices/{deviceId}` | Config + última telemetria |
-| PUT | `/devices/{deviceId}` | Atualiza nome, broker, prefixo MQTT |
+| PUT | `/devices/{deviceId}` | Atualiza ou renomeia equipamento |
+| DELETE | `/devices/{deviceId}` | Remove equipamento (não o único padrão) |
 | GET | `/devices/{deviceId}/telemetry` | Último pacote de telemetria |
 | POST | `/devices/{deviceId}/command` | Envia setpoints ao BPL (MQTT) |
 | POST | `/telemetry` | BPL envia telemetria por HTTP |

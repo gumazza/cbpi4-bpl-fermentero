@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fermenteros BPL — CBPi</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4f;
+      --text: #e8eef7;
+      --muted: #8b9cb3;
+      --accent: #3d9ae8;
+      --ok: #3ecf8e;
+      --warn: #e8a33d;
+      --danger: #e85d5d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 1.25rem;
+      line-height: 1.45;
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 0.25rem; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+  a { color: var(--accent); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; align-items: center; }
+  button, .btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 0.45rem 0.85rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  button.secondary { background: var(--border); }
+  button.danger { background: var(--danger); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .grid { display: grid; gap: 1rem; }
+  @media (min-width: 900px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+  }
+  .card h2 { font-size: 1rem; margin: 0 0 0.75rem; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
+  input, select {
+    width: 100%;
+    margin-top: 0.2rem;
+    padding: 0.45rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 0.5rem 0.35rem; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  .tag { font-size: 0.75rem; padding: 0.15rem 0.4rem; border-radius: 4px; background: #243044; }
+  .tag.live { background: #1a3d2e; color: var(--ok); }
+  .tag.stale { color: var(--muted); }
+  #msg { min-height: 1.2rem; color: var(--warn); font-size: 0.85rem; }
+  .telemetry { font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--muted); max-height: 8rem; overflow: auto; }
+  .row-actions { display: flex; gap: 0.35rem; }
+  </style>
+</head>
+<body>
+  <h1>Fermenteros BPL (MAZZA)</h1>
+  <p class="sub">
+    Cadastre vários equipamentos na rede local (MQTT). Não exige internet —
+    só o broker acessível na LAN.
+    <a id="apiLink" href="/api/bpl/v1/health" target="_blank">API</a>
+  </p>
+  <div id="msg"></div>
+  <div class="toolbar">
+    <button type="button" id="btnRefresh">Atualizar lista</button>
+    <button type="button" class="secondary" id="btnNew">Novo equipamento</button>
+  </div>
+
+  <div class="card" style="margin-bottom: 1rem;">
+    <h2>Equipamentos cadastrados</h2>
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>ID (MQTT)</th>
+            <th>Nome</th>
+            <th>Broker</th>
+            <th>Telemetria</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="deviceRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card" id="editorCard">
+      <h2 id="editorTitle">Editar equipamento</h2>
+      <form id="deviceForm">
+        <input type="hidden" id="originalId" />
+        <label>ID do equipamento (deviceId)
+          <input id="f_id" required pattern="[A-Za-z0-9_.\-]+" placeholder="Fermentero_2" />
+        </label>
+        <label>Nome exibido
+          <input id="f_name" />
+        </label>
+        <label>Broker MQTT (IP na LAN)
+          <input id="f_broker" placeholder="192.168.0.50 ou localhost" />
+        </label>
+        <label>Porta
+          <input id="f_port" type="number" value="1883" />
+        </label>
+        <label>Prefixo dos tópicos
+          <input id="f_prefix" value="cbpi/bpl" />
+        </label>
+        <label>Protocolo
+          <select id="f_protocol">
+            <option value="v1">v1 (JSON)</option>
+            <option value="legacy">legacy</option>
+          </select>
+        </label>
+        <p class="telemetry" id="topicHint"></p>
+        <div class="toolbar" style="margin-top: 0.75rem;">
+          <button type="submit">Salvar</button>
+          <button type="button" class="danger" id="btnDelete">Remover</button>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Última telemetria</h2>
+      <pre class="telemetry" id="telemetryView">—</pre>
+      <p class="sub" style="margin-top: 0.75rem;">
+        No CBPi: use lógica <strong>BPL Supervisor</strong> e sensores <strong>BPL Telemetry</strong>
+        com o mesmo <strong>DeviceId</strong> e <strong>UseRegistry = Yes</strong>.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const API = window.location.origin + "/api/bpl/v1";
+    const msg = (t, ok) => {
+      const el = document.getElementById("msg");
+      el.textContent = t || "";
+      el.style.color = ok ? "var(--ok)" : "var(--warn)";
+    };
+
+    let devices = [];
+    let selectedId = null;
+
+    function updateTopicHint() {
+      const id = document.getElementById("f_id").value.trim() || "Fermentero";
+      const pre = document.getElementById("f_prefix").value.trim() || "cbpi/bpl";
+      document.getElementById("topicHint").textContent =
+        pre + "/" + id + "/telemetry\n" + pre + "/" + id + "/command";
+    }
+
+    ["f_id", "f_prefix"].forEach((id) =>
+      document.getElementById(id).addEventListener("input", updateTopicHint)
+    );
+
+    function formatAge(ts) {
+      if (!ts) return { text: "sem dados", live: false };
+      const now = Math.floor(Date.now() / 1000);
+      const age = now - ts;
+      if (age < 120) return { text: "online", live: true };
+      if (age < 3600) return { text: age + " s atrás", live: false };
+      return { text: Math.floor(age / 60) + " min atrás", live: false };
+    }
+
+    function renderTable() {
+      const tb = document.getElementById("deviceRows");
+      tb.innerHTML = "";
+      devices.forEach((d) => {
+        const tr = document.createElement("tr");
+        const tel = d.telemetry || {};
+        const age = formatAge(tel.ts);
+        tr.innerHTML =
+          "<td><code>" + escapeHtml(d.id) + "</code></td>" +
+          "<td>" + escapeHtml(d.name || d.id) + "</td>" +
+          "<td>" + escapeHtml(d.broker) + ":" + d.port + "</td>" +
+          '<td><span class="tag ' + (age.live ? "live" : "stale") + '">' +
+          age.text + "</span></td>" +
+          '<td class="row-actions"><button type="button" class="secondary btn-edit">Editar</button></td>';
+        tr.querySelector(".btn-edit").onclick = () => loadEditor(d.id);
+        tb.appendChild(tr);
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    async function fetchDevices() {
+      msg("Carregando…");
+      const r = await fetch(API + "/devices");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const j = await r.json();
+      devices = j.devices || [];
+      renderTable();
+      msg("");
+    }
+
+    function loadEditor(id) {
+      const d = devices.find((x) => x.id === id);
+      if (!d) return;
+      selectedId = id;
+      document.getElementById("editorTitle").textContent = "Editar: " + id;
+      document.getElementById("originalId").value = id;
+      document.getElementById("f_id").value = d.id;
+      document.getElementById("f_name").value = d.name || d.id;
+      document.getElementById("f_broker").value = d.broker || "localhost";
+      document.getElementById("f_port").value = d.port || 1883;
+      document.getElementById("f_prefix").value = d.topicPrefix || "cbpi/bpl";
+      document.getElementById("f_protocol").value = d.protocol || "v1";
+      document.getElementById("telemetryView").textContent = JSON.stringify(
+        d.telemetry || {},
+        null,
+        2
+      );
+      document.getElementById("btnDelete").disabled = devices.length <= 1 && id === "Fermentero";
+      updateTopicHint();
+    }
+
+    function newDevice() {
+      selectedId = null;
+      document.getElementById("editorTitle").textContent = "Novo equipamento";
+      document.getElementById("originalId").value = "";
+      document.getElementById("f_id").value = "Fermentero_" + (devices.length + 1);
+      document.getElementById("f_name").value = "";
+      const first = devices[0];
+      document.getElementById("f_broker").value = first ? first.broker : "localhost";
+      document.getElementById("f_port").value = first ? first.port : 1883;
+      document.getElementById("f_prefix").value = "cbpi/bpl";
+      document.getElementById("f_protocol").value = "v1";
+      document.getElementById("telemetryView").textContent = "—";
+      document.getElementById("btnDelete").disabled = true;
+      updateTopicHint();
+    }
+
+    document.getElementById("btnRefresh").onclick = () =>
+      fetchDevices().catch((e) => msg(e.message));
+    document.getElementById("btnNew").onclick = newDevice;
+
+    document.getElementById("deviceForm").onsubmit = async (ev) => {
+      ev.preventDefault();
+      const body = {
+        id: document.getElementById("f_id").value.trim(),
+        name: document.getElementById("f_name").value.trim() || undefined,
+        broker: document.getElementById("f_broker").value.trim() || "localhost",
+        port: parseInt(document.getElementById("f_port").value, 10) || 1883,
+        topicPrefix: document.getElementById("f_prefix").value.trim() || "cbpi/bpl",
+        protocol: document.getElementById("f_protocol").value,
+      };
+      const orig = document.getElementById("originalId").value;
+      try {
+        let r;
+        if (orig) {
+          r = await fetch(API + "/devices/" + encodeURIComponent(orig), {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+        } else {
+          r = await fetch(API + "/devices", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+        }
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+        msg("Salvo.", true);
+        await fetchDevices();
+        loadEditor(body.id);
+      } catch (e) {
+        msg(e.message);
+      }
+    };
+
+    document.getElementById("btnDelete").onclick = async () => {
+      const orig = document.getElementById("originalId").value;
+      if (!orig || !confirm("Remover " + orig + "?")) return;
+      try {
+        const r = await fetch(API + "/devices/" + encodeURIComponent(orig), {
+          method: "DELETE",
+        });
+        if (!r.ok && r.status !== 204) {
+          const j = await r.json().catch(() => ({}));
+          throw new Error(j.error || "HTTP " + r.status);
+        }
+        msg("Removido.", true);
+        selectedId = null;
+        await fetchDevices();
+        if (devices[0]) loadEditor(devices[0].id);
+        else newDevice();
+      } catch (e) {
+        msg(e.message);
+      }
+    };
+
+    fetchDevices()
+      .then(() => {
+        if (devices[0]) loadEditor(devices[0].id);
+        else newDevice();
+      })
+      .catch((e) => msg(e.message));
+    setInterval(() => fetchDevices().catch(() => {}), 30000);
+  </script>
+</body>
+</html>

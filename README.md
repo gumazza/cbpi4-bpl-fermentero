@@ -35,12 +35,22 @@ Instalação local (desenvolvimento):
 pipx runpip cbpi4 install -e ./cbpi4-bpl-fermentero
 ```
 
-## Configuração inicial (preview)
+## Interface web (vários BPL)
 
-1. Broker MQTT acessível pelo Pi e pelo BPL (ex.: Mosquitto).
-2. No CBPi, criar sensores do tipo **BPL – …** (cerveja, refrigeração, densidade, pressão, etc.).
-3. Criar fermentador com lógica **BPL Supervisor (MAZZA)** — envia setpoints ao BPL; não comanda relés locais do Pi.
-4. Perfil de fermentação no CBPi; o plugin publica temperatura/pressão/umidade da etapa atual no tópico de comando.
+Após instalar o plugin, abra no navegador (mesma rede do Pi):
+
+`http://<IP-do-Pi>:8080/cbpi_bpl_fermentero/static/index.html`  
+(Se não abrir, tente `/cbpi_bplfermentero/static/index.html` — confira em `GET /api/bpl/v1/health`.)
+
+Cadastre `Fermentero`, `Fermentero_2`, etc. com o IP do broker MQTT (ex.: `localhost` se Mosquitto está no Pi). **Não precisa de internet.**
+
+## Configuração inicial
+
+1. Broker MQTT acessível pelo Pi e por cada BPL na LAN (ex.: Mosquitto no Raspberry).
+2. Página **Equipamentos BPL** ou `GET/POST /api/bpl/v1/devices` — um registro por fermentero.
+3. Sensores **BPL – …** com **DeviceId** igual ao cadastro e **UseRegistry = Yes** (broker herdado do cadastro).
+4. Fermentador com lógica **BPL Supervisor (MAZZA)** — mesmo **DeviceId**; envia setpoints; não comanda relés do Pi.
+5. Perfil de fermentação no CBPi; a lógica reenvia `target_temp` e, se existirem no passo, pressão/umidade.
 
 > O firmware do BPL ainda usará o preset “Integração CBPi” (próxima fase). Enquanto isso, dá para testar com o MQTT genérico do BPL (`docs/MQTT_v1.md` — modo legado).
 

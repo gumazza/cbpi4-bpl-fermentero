@@ -3,11 +3,14 @@
 
 import json
 import logging
+import re
 import threading
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+_ID_RE = re.compile(r"^[a-zA-Z0-9_.\-]+$")
 
 DEFAULT_DEVICE_ID = "Fermentero"
 CONFIG_KEY = "bpl_devices_json"
@@ -75,13 +78,34 @@ def get_device(device_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def upsert_device(cbpi, data: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_id(device_id: str) -> str:
+    device_id = (device_id or DEFAULT_DEVICE_ID).strip()
+    if not _ID_RE.match(device_id):
+        raise ValueError(f"id inválido: {device_id!r}")
+    return device_id
+
+
+def upsert_device(
+    cbpi, data: Dict[str, Any], previous_id: Optional[str] = None
+) -> Dict[str, Any]:
     """Cria ou atualiza equipamento. `id` obrigatório (padrão Fermentero)."""
-    device_id = data.get("id") or DEFAULT_DEVICE_ID
+    device_id = normalize_id(data.get("id") or DEFAULT_DEVICE_ID)
+    lookup = previous_id or device_id
     with _lock:
         for i, d in enumerate(_devices):
-            if d.get("id") == device_id:
-                merged = {**d, **data, "id": device_id}
+            if d.get("id") == lookup:
+                merged = {
+                    **d,
+                    **data,
+                    "id": device_id,
+                    "port": int(data.get("port", d.get("port", 1883))),
+                }
+                if lookup != device_id:
+                    for other in _devices:
+                        if other.get("id") == device_id and other is not d:
+                            raise ValueError(
+                                f"já existe equipamento com id {device_id}"
+                            )
                 _devices[i] = merged
                 _save(cbpi)
                 return deepcopy(merged)
@@ -94,6 +118,24 @@ def upsert_device(cbpi, data: Dict[str, Any]) -> Dict[str, Any]:
             "port": int(data.get("port", 1883)),
         }
         entry.update({k: v for k, v in data.items() if v is not None})
+        for d in _devices:
+            if d.get("id") == device_id:
+                raise ValueError(f"já existe equipamento com id {device_id}")
         _devices.append(entry)
         _save(cbpi)
         return deepcopy(entry)
+
+
+def remove_device(cbpi, device_id: str) -> bool:
+    device_id = normalize_id(device_id)
+    with _lock:
+        for i, d in enumerate(_devices):
+            if d.get("id") == device_id:
+                if device_id == DEFAULT_DEVICE_ID and len(_devices) == 1:
+                    raise ValueError(
+                        "não é possível remover o único equipamento padrão"
+                    )
+                _devices.pop(i)
+                _save(cbpi)
+                return True
+    return False

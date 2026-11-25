@@ -4,7 +4,7 @@ import logging
 
 from cbpi.api import CBPiSensor, Property, parameters
 
-from . import mqtt_bridge
+from . import device_registry, mqtt_bridge
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,12 @@ def _sensor_params():
             options=["v1", "legacy"],
             description="v1 = JSON telemetry; legacy = tópicos BPL atuais",
         ),
+        Property.Select(
+            label="UseRegistry",
+            options=["Yes", "No"],
+            default_value="Yes",
+            description="Sim = Broker/Porta/Prefixo/Protocolo vêm do cadastro BPL (página Equipamentos)",
+        ),
     ]
 
 
@@ -78,11 +84,26 @@ class BPLTelemetrySensor(CBPiSensor):
         if self._field == "humidityRh":
             self._field = "fridgeHumidity"
 
+    def _device_id(self) -> str:
+        return self.props.get("DeviceId", device_registry.DEFAULT_DEVICE_ID)
+
     def _configure_mqtt(self):
+        device_id = self._device_id()
+        if self.props.get("UseRegistry", "Yes") == "Yes":
+            reg = device_registry.get_device(device_id)
+            if reg:
+                mqtt_bridge.configure(
+                    broker=reg.get("broker", "localhost"),
+                    port=int(reg.get("port", 1883)),
+                    device_id=device_id,
+                    topic_prefix=reg.get("topicPrefix", "cbpi/bpl"),
+                    use_v1=reg.get("protocol", "v1") == "v1",
+                )
+                return
         mqtt_bridge.configure(
             broker=self.props.get("Broker", "localhost"),
             port=int(self.props.get("Port", 1883)),
-            device_id=self.props.get("DeviceId", "Fermentero"),
+            device_id=device_id,
             topic_prefix=self.props.get("TopicPrefix", "cbpi/bpl"),
             use_v1=self.props.get("Protocol", "v1") == "v1",
         )
@@ -91,7 +112,7 @@ class BPLTelemetrySensor(CBPiSensor):
         self._configure_mqtt()
         while self.running:
             mqtt_bridge.ensure_connected()
-            reading = mqtt_bridge.get_field(self._field)
+            reading = mqtt_bridge.get_field(self._field, device_id=self._device_id())
             if reading is not None:
                 prec = self._default_precision
                 self.value = round(reading, prec if prec < 10 else 1)

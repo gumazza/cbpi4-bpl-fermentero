@@ -1,1 +1,2 @@
 recursive-include cbpi4-bpl-fermentero *.yaml
+recursive-include cbpi4-bpl-fermentero/static *

@@ -27,3 +27,10 @@ O BPL continua executando BrewPi localmente; apenas os **alvos** vêm do CBPi.
 
 - Não usa MQTTActor para ligar aquecimento/resfriamento no BPL.
 - Não duplica perfil ativo no BPL (perfil só no CBPi).
+
+## Vários fermenteros (v0.3)
+
+- Cadastro central em `bpl_devices_json` (config CBPi) + API `/api/bpl/v1/devices`.
+- Interface web estática do plugin: lista, cria, edita e remove equipamentos; mostra telemetria por ID.
+- Um **DeviceId** por BPL; sensores e lógica **BPL Supervisor** usam o mesmo ID (`UseRegistry = Yes` herda broker do cadastro).
+- `mqtt_bridge` mantém subscrições MQTT simultâneas por equipamento no mesmo broker (LAN, sem internet).
