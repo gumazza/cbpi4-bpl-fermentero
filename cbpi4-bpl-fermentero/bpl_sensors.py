@@ -36,8 +36,8 @@ def _sensor_params():
         Property.Text(
             label="DeviceId",
             configurable=True,
-            default_value="fermentero1",
-            description="ID do BPL (prefixo de tópicos)",
+            default_value="Fermentero",
+            description="ID MQTT do equipamento (padrão Fermentero; altere se renomeou no BPL)",
         ),
         Property.Text(
             label="TopicPrefix",
@@ -82,7 +82,7 @@ class BPLTelemetrySensor(CBPiSensor):
         mqtt_bridge.configure(
             broker=self.props.get("Broker", "localhost"),
             port=int(self.props.get("Port", 1883)),
-            device_id=self.props.get("DeviceId", "fermentero1"),
+            device_id=self.props.get("DeviceId", "Fermentero"),
             topic_prefix=self.props.get("TopicPrefix", "cbpi/bpl"),
             use_v1=self.props.get("Protocol", "v1") == "v1",
         )

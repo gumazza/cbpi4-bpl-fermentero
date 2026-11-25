@@ -10,7 +10,10 @@ Plugin CraftBeerPi 4 para integrar o **Fermentero BrewPiLess (BPL)** como contro
 Os registros do CBPi ficam no CBPi; os registros do BPL ficam só no BPL.
 
 Documentação do contrato MQTT: [docs/MQTT_v1.md](docs/MQTT_v1.md)  
+API HTTP no CBPi: [docs/API.md](docs/API.md)  
 Visão geral: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+**Device ID padrão:** `Fermentero` (ajuste no CBPi ou via API se o equipamento tiver outro nome).
 
 ## Instalação (Raspberry Pi com CBPi4)
 

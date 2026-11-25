@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
         Property.Text(
             label="DeviceId",
             configurable=True,
-            default_value="fermentero1",
+            default_value="Fermentero",
         ),
         Property.Text(
             label="TopicPrefix",
@@ -68,7 +68,7 @@ class BPLSupervisorFermenterLogic(CBPiFermenterLogic):
         mqtt_bridge.configure(
             broker=self.props.get("Broker", "localhost"),
             port=int(self.props.get("Port", 1883)),
-            device_id=self.props.get("DeviceId", "fermentero1"),
+            device_id=self.props.get("DeviceId", "Fermentero"),
             topic_prefix=self.props.get("TopicPrefix", "cbpi/bpl"),
             use_v1=self.props.get("Protocol", "v1") == "v1",
         )

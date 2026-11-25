@@ -10,7 +10,7 @@ Payload JSON (exemplo):
 ```json
 {
   "v": 1,
-  "deviceId": "fermentero2",
+  "deviceId": "Fermentero",
   "ts": 1732521600,
   "controlSource": "cbpi",
   "modeLabel": "Controle CBPi",

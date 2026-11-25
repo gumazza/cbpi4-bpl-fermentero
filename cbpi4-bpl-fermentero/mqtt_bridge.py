@@ -18,7 +18,7 @@ _port: int = 1883
 _username: Optional[str] = None
 _password: Optional[str] = None
 _prefix: str = "cbpi/bpl"
-_device_id: str = "fermentero1"
+_device_id: str = "Fermentero"
 _use_v1: bool = True
 
 
@@ -27,7 +27,7 @@ def configure(
     port: int = 1883,
     username: Optional[str] = None,
     password: Optional[str] = None,
-    device_id: str = "fermentero1",
+    device_id: str = "Fermentero",
     topic_prefix: str = "cbpi/bpl",
     use_v1: bool = True,
 ) -> None:
@@ -97,6 +97,16 @@ def ensure_connected() -> None:
         _client.subscribe(base, qos=1)
     _client.loop_start()
     logger.info("MQTT bridge: %s:%s device=%s", _broker, _port, _device_id)
+
+
+def update_telemetry(data: Dict[str, Any]) -> None:
+    with _lock:
+        _telemetry.update(data)
+
+
+def snapshot_telemetry() -> Dict[str, Any]:
+    with _lock:
+        return dict(_telemetry)
 
 
 def get_field(field: str) -> Optional[float]:
